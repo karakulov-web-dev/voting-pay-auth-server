@@ -11,6 +11,18 @@ class App {
     app.listen(8001);
     console.log("voting-pay-auth-server started on port 8001");
   }
+  createApiPoint_registrationUser(app: express.Express) {
+    app.post("/registration-user", (req, res) => {
+      res.send(this.registrationUser());
+    });
+  }
+  registrationUser() {
+    return {
+      errorStatus: false,
+      errorText: "",
+      AccessToken: "validToken"
+    };
+  }
 }
 
 new App();
