@@ -17,6 +17,45 @@ interface RegistrationResData {
   AccessToken: string;
 }
 
+interface CheckAccessTokenReqData {
+  AccessToken: string;
+}
+
+interface CheckAccessTokenResData {
+  errorStatus: boolean;
+  errorText: string;
+  AccessTokenStatus: boolean;
+  user?: {
+    id: string;
+    AccessToken: string;
+  };
+}
+
+interface LoginUserReqData {
+  email: string;
+  password: string;
+}
+
+interface LoginUserResData {
+  AccessToken: string;
+  errorStatus: boolean;
+  errorText: string;
+  user?: {
+    id: string;
+    AccessToken: string;
+  };
+}
+
+interface RestorePasswordReqData {
+  email: string;
+}
+
+interface RestorePasswordResData {
+  restorePasswordSessionId: string;
+  errorStatus: boolean;
+  errorText: string;
+}
+
 class App {
   private db: mongodb.Db | undefined;
   constructor() {
@@ -42,17 +81,20 @@ class App {
     console.log("voting-pay-auth-server started on port 8001");
 
     this.createApiPoint_registrationUser(app);
+    this.createApiPoint_checkAccessToken(app);
+    this.createApiPoint_loginUser(app);
+    this.createApiPoint_resorePassword(app);
   }
   createApiPoint_registrationUser(app: express.Express) {
     app.post("/registration-user", (req, res) => {
       (async () => {
-        let result = await this.registrationUser(req.body as any);
+        let result: {} = await this.registrationUser(req.body as any);
         res.send(result);
       })();
     });
   }
   registrationUser(registrationReqData: RegistrationReqData) {
-    return new Promise(resolve => {
+    return new Promise<RegistrationResData>(resolve => {
       let { email, password } = registrationReqData;
       email = typeof email === "string" ? email : "";
       password = typeof password === "string" ? password : "";
@@ -98,11 +140,20 @@ class App {
             AccessToken: ""
           });
         } else {
-          resolve({
-            errorStatus: false,
-            errorTest: "",
-            AccessToken: this.createUser(email, password)
-          });
+          let AccessToken = this.createUser(email, password);
+          if (AccessToken) {
+            resolve({
+              errorStatus: false,
+              errorText: "",
+              AccessToken: AccessToken
+            });
+          } else {
+            resolve({
+              errorStatus: true,
+              errorText: "Произошла ошибка при создании пользователя!",
+              AccessToken: ""
+            });
+          }
         }
       })();
     });
@@ -118,21 +169,148 @@ class App {
       password,
       AccessToken
     };
-    users.insert(user);
+    users.insertMany([user]);
     return AccessToken;
   }
   createApiPoint_checkAccessToken(app: express.Express) {
-    app.post("/check-access-token", (req, res) => {
-      res.send(this.checkAccessToken(req.body));
+    app.post("/check-access-token", async (req, res) => {
+      res.send(await this.checkAccessToken(req.body));
     });
   }
-  checkAccessToken() {}
+  async checkAccessToken({
+    AccessToken
+  }: CheckAccessTokenReqData): Promise<CheckAccessTokenResData> {
+    if (!AccessToken) {
+      return {
+        errorStatus: true,
+        errorText: "Некорректный AccessToken",
+        AccessTokenStatus: false
+      };
+    }
+
+    let users;
+    if (this.db) {
+      users = this.db.collection("vpUsers");
+    }
+    if (!users) {
+      return {
+        errorStatus: true,
+        errorText: "Ошибка соединения с базой данных",
+        AccessTokenStatus: false
+      };
+    }
+
+    var data = await users.find({ AccessToken }).toArray();
+    if (!data[0]) {
+      return {
+        errorStatus: true,
+        errorText: "AccessToken устарел или не существует",
+        AccessTokenStatus: false
+      };
+    } else {
+      return {
+        errorStatus: false,
+        errorText: "",
+        AccessTokenStatus: true,
+        user: {
+          id: data[0]._id,
+          AccessToken: data[0].AccessToken
+        }
+      };
+    }
+  }
   createApiPoint_loginUser(app: express.Express) {
-    app.post("/login-user", (req, res) => {
-      res.send(this.checkAccessToken(req.body));
+    app.post("/login-user", async (req, res) => {
+      res.send(await this.loginUser(req.body));
     });
   }
-  loginUser() {}
+  async loginUser({
+    email,
+    password
+  }: LoginUserReqData): Promise<LoginUserResData> {
+    if (!(email && password)) {
+      return {
+        AccessToken: "",
+        errorStatus: true,
+        errorText: "Не правильный email или пароль"
+      };
+    }
+
+    let users;
+    if (this.db) {
+      users = this.db.collection("vpUsers");
+    }
+    if (!users) {
+      return {
+        errorStatus: true,
+        errorText: "Ошибка соединения с базой данных",
+        AccessToken: ""
+      };
+    }
+
+    var data = await users.find({ email }).toArray();
+    if (!data[0]) {
+      return {
+        errorStatus: true,
+        errorText: "Не правильный email или пароль",
+        AccessToken: ""
+      };
+    }
+
+    if (data[0].password !== password) {
+      return {
+        errorStatus: true,
+        errorText: "Не правильный email или пароль",
+        AccessToken: ""
+      };
+    }
+
+    return {
+      errorStatus: false,
+      errorText: "",
+      AccessToken: data[0].AccessToken,
+      user: {
+        id: data[0]._id,
+        AccessToken: data[0].AccessToken
+      }
+    };
+  }
+  createApiPoint_resorePassword(app: express.Express) {
+    app.post("/restore-password", async (req, res) => {
+      res.send(await this.restorePassword(req.body));
+    });
+  }
+  async restorePassword({
+    email
+  }: RestorePasswordReqData): Promise<RestorePasswordResData> {
+    let errorStatus = false;
+    let errorText = "";
+    let restorePasswordSessionId = md5(String(Math.random()).slice(2, 18));
+
+    if (!this.db) {
+      return {
+        errorStatus: true,
+        errorText: "Ошибка соединения с базой данных!",
+        restorePasswordSessionId: ""
+      };
+    }
+
+    let users = this.db.collection("vpUsers");
+    users.updateOne(
+      { email },
+      {
+        $set: {
+          restorePasswordSessionId
+        }
+      }
+    );
+
+    return {
+      errorStatus,
+      errorText,
+      restorePasswordSessionId
+    };
+  }
 }
 
 new App();

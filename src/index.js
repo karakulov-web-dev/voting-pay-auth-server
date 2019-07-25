@@ -66,6 +66,9 @@ var App = /** @class */ (function () {
         app.listen(8001);
         console.log("voting-pay-auth-server started on port 8001");
         this.createApiPoint_registrationUser(app);
+        this.createApiPoint_checkAccessToken(app);
+        this.createApiPoint_loginUser(app);
+        this.createApiPoint_resorePassword(app);
     }
     App.prototype.createApiPoint_registrationUser = function (app) {
         var _this = this;
@@ -122,7 +125,7 @@ var App = /** @class */ (function () {
                 });
             };
             (function () { return __awaiter(_this, void 0, void 0, function () {
-                var userExistStatus;
+                var userExistStatus, AccessToken;
                 return __generator(this, function (_a) {
                     switch (_a.label) {
                         case 0: return [4 /*yield*/, checkExistUser(email)];
@@ -136,11 +139,21 @@ var App = /** @class */ (function () {
                                 });
                             }
                             else {
-                                resolve({
-                                    errorStatus: false,
-                                    errorTest: "",
-                                    AccessToken: this.createUser(email, password)
-                                });
+                                AccessToken = this.createUser(email, password);
+                                if (AccessToken) {
+                                    resolve({
+                                        errorStatus: false,
+                                        errorText: "",
+                                        AccessToken: AccessToken
+                                    });
+                                }
+                                else {
+                                    resolve({
+                                        errorStatus: true,
+                                        errorText: "Произошла ошибка при создании пользователя!",
+                                        AccessToken: ""
+                                    });
+                                }
                             }
                             return [2 /*return*/];
                     }
@@ -159,24 +172,192 @@ var App = /** @class */ (function () {
             password: password,
             AccessToken: AccessToken
         };
-        users.insert(user);
+        users.insertMany([user]);
         return AccessToken;
     };
     App.prototype.createApiPoint_checkAccessToken = function (app) {
         var _this = this;
-        app.post("/check-access-token", function (req, res) {
-            res.send(_this.checkAccessToken(req.body));
+        app.post("/check-access-token", function (req, res) { return __awaiter(_this, void 0, void 0, function () {
+            var _a, _b;
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        _b = (_a = res).send;
+                        return [4 /*yield*/, this.checkAccessToken(req.body)];
+                    case 1:
+                        _b.apply(_a, [_c.sent()]);
+                        return [2 /*return*/];
+                }
+            });
+        }); });
+    };
+    App.prototype.checkAccessToken = function (_a) {
+        var AccessToken = _a.AccessToken;
+        return __awaiter(this, void 0, void 0, function () {
+            var users, data;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        if (!AccessToken) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Некорректный AccessToken",
+                                    AccessTokenStatus: false
+                                }];
+                        }
+                        if (this.db) {
+                            users = this.db.collection("vpUsers");
+                        }
+                        if (!users) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Ошибка соединения с базой данных",
+                                    AccessTokenStatus: false
+                                }];
+                        }
+                        return [4 /*yield*/, users.find({ AccessToken: AccessToken }).toArray()];
+                    case 1:
+                        data = _b.sent();
+                        if (!data[0]) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "AccessToken устарел или не существует",
+                                    AccessTokenStatus: false
+                                }];
+                        }
+                        else {
+                            return [2 /*return*/, {
+                                    errorStatus: false,
+                                    errorText: "",
+                                    AccessTokenStatus: true,
+                                    user: {
+                                        id: data[0]._id,
+                                        AccessToken: data[0].AccessToken
+                                    }
+                                }];
+                        }
+                        return [2 /*return*/];
+                }
+            });
         });
     };
-    App.prototype.checkAccessToken = function () { };
     App.prototype.createApiPoint_loginUser = function (app) {
         var _this = this;
-        app.post("/login-user", function (req, res) {
-            res.send(_this.checkAccessToken(req.body));
+        app.post("/login-user", function (req, res) { return __awaiter(_this, void 0, void 0, function () {
+            var _a, _b;
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        _b = (_a = res).send;
+                        return [4 /*yield*/, this.loginUser(req.body)];
+                    case 1:
+                        _b.apply(_a, [_c.sent()]);
+                        return [2 /*return*/];
+                }
+            });
+        }); });
+    };
+    App.prototype.loginUser = function (_a) {
+        var email = _a.email, password = _a.password;
+        return __awaiter(this, void 0, void 0, function () {
+            var users, data;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        if (!(email && password)) {
+                            return [2 /*return*/, {
+                                    AccessToken: "",
+                                    errorStatus: true,
+                                    errorText: "Не правильный email или пароль"
+                                }];
+                        }
+                        if (this.db) {
+                            users = this.db.collection("vpUsers");
+                        }
+                        if (!users) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Ошибка соединения с базой данных",
+                                    AccessToken: ""
+                                }];
+                        }
+                        return [4 /*yield*/, users.find({ email: email }).toArray()];
+                    case 1:
+                        data = _b.sent();
+                        if (!data[0]) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Не правильный email или пароль",
+                                    AccessToken: ""
+                                }];
+                        }
+                        if (data[0].password !== password) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Не правильный email или пароль",
+                                    AccessToken: ""
+                                }];
+                        }
+                        return [2 /*return*/, {
+                                errorStatus: false,
+                                errorText: "",
+                                AccessToken: data[0].AccessToken,
+                                user: {
+                                    id: data[0]._id,
+                                    AccessToken: data[0].AccessToken
+                                }
+                            }];
+                }
+            });
         });
     };
-    App.prototype.loginUser = function () { };
+    App.prototype.createApiPoint_resorePassword = function (app) {
+        var _this = this;
+        app.post("/restore-password", function (req, res) { return __awaiter(_this, void 0, void 0, function () {
+            var _a, _b;
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        _b = (_a = res).send;
+                        return [4 /*yield*/, this.restorePassword(req.body)];
+                    case 1:
+                        _b.apply(_a, [_c.sent()]);
+                        return [2 /*return*/];
+                }
+            });
+        }); });
+    };
+    App.prototype.restorePassword = function (_a) {
+        var email = _a.email;
+        return __awaiter(this, void 0, void 0, function () {
+            var errorStatus, errorText, restorePasswordSessionId, users;
+            return __generator(this, function (_b) {
+                errorStatus = false;
+                errorText = "";
+                restorePasswordSessionId = md5_1["default"](String(Math.random()).slice(2, 18));
+                if (!this.db) {
+                    return [2 /*return*/, {
+                            errorStatus: true,
+                            errorText: "Ошибка соединения с базой данных!",
+                            restorePasswordSessionId: ""
+                        }];
+                }
+                users = this.db.collection("vpUsers");
+                users.updateOne({ email: email }, {
+                    $set: {
+                        restorePasswordSessionId: restorePasswordSessionId
+                    }
+                });
+                return [2 /*return*/, {
+                        errorStatus: errorStatus,
+                        errorText: errorText,
+                        restorePasswordSessionId: restorePasswordSessionId
+                    }];
+            });
+        });
+    };
     return App;
 }());
 new App();
 exports["default"] = App;
+//# sourceMappingURL=index.js.map
