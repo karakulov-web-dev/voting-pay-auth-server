@@ -4,6 +4,7 @@
 import express from "express";
 import mongodb from "mongodb";
 import md5 from "md5";
+import { access } from "fs";
 
 const MongoClient = mongodb.MongoClient;
 
@@ -51,9 +52,7 @@ interface RestorePasswordReqData {
 }
 
 interface RestorePasswordResData {
-  restorePasswordSessionId: string;
-  errorStatus: boolean;
-  errorText: string;
+  email: string;
 }
 
 class App {
@@ -83,7 +82,6 @@ class App {
     this.createApiPoint_registrationUser(app);
     this.createApiPoint_checkAccessToken(app);
     this.createApiPoint_loginUser(app);
-    this.createApiPoint_resorePassword(app);
   }
   createApiPoint_registrationUser(app: express.Express) {
     app.post("/registration-user", (req, res) => {
@@ -275,6 +273,7 @@ class App {
       }
     };
   }
+
   createApiPoint_resorePassword(app: express.Express) {
     app.post("/restore-password", async (req, res) => {
       res.send(await this.restorePassword(req.body));

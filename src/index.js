@@ -68,7 +68,6 @@ var App = /** @class */ (function () {
         this.createApiPoint_registrationUser(app);
         this.createApiPoint_checkAccessToken(app);
         this.createApiPoint_loginUser(app);
-        this.createApiPoint_resorePassword(app);
     }
     App.prototype.createApiPoint_registrationUser = function (app) {
         var _this = this;
