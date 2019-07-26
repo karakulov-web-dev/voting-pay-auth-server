@@ -4,7 +4,7 @@
 import express from "express";
 import mongodb from "mongodb";
 import md5 from "md5";
-import { access } from "fs";
+import axios from "axios";
 
 const MongoClient = mongodb.MongoClient;
 
@@ -52,7 +52,21 @@ interface RestorePasswordReqData {
 }
 
 interface RestorePasswordResData {
-  email: string;
+  errorStatus: boolean;
+  errorText: string;
+  restorePasswordSessionId: string;
+}
+
+interface VerificationCodeReqData {
+  code: string;
+  sessionId: string;
+  newPassword?: string;
+}
+
+interface VerificationCodeResData {
+  errorStatus: boolean;
+  errorText: string;
+  AccessToken?: string;
 }
 
 class App {
@@ -82,6 +96,8 @@ class App {
     this.createApiPoint_registrationUser(app);
     this.createApiPoint_checkAccessToken(app);
     this.createApiPoint_loginUser(app);
+    this.createApiPoint_resorePassword(app);
+    this.createApiPoint_resorePasswordVerificationCode(app);
   }
   createApiPoint_registrationUser(app: express.Express) {
     app.post("/registration-user", (req, res) => {
@@ -160,7 +176,7 @@ class App {
     if (typeof this.db === "undefined") {
       return;
     }
-    let AccessToken = md5("prefix_" + Math.random() + "_postfix");
+    let AccessToken = this.createRandomHash();
     const users = this.db.collection("vpUsers");
     let user = {
       email,
@@ -284,7 +300,9 @@ class App {
   }: RestorePasswordReqData): Promise<RestorePasswordResData> {
     let errorStatus = false;
     let errorText = "";
-    let restorePasswordSessionId = md5(String(Math.random()).slice(2, 18));
+    let restorePasswordSessionId = this.createRandomHash();
+    let restorePasswordVerificationCode = this.createRandomHash().substr(0, 5);
+    let restorePasswordNumberAttempts = 0;
 
     if (!this.db) {
       return {
@@ -299,16 +317,134 @@ class App {
       { email },
       {
         $set: {
-          restorePasswordSessionId
+          restorePasswordSessionId,
+          restorePasswordVerificationCode,
+          restorePasswordNumberAttempts
         }
       }
     );
+
+    let messageTextArr = [
+      "Вы получили это письмо, потому что вы (или кто-то еще) запросили код подтверждения учетной записи votingpay.com",
+      `Ваш код подтверждения : ${restorePasswordVerificationCode}`,
+      "Если вы получили это по ошибке, вы можете спокойно проигнорировать это.",
+      "VotingPay любит тебя!"
+    ];
+
+    let messageHtmlArr = messageTextArr.map(text => text);
+    messageHtmlArr[1] = `<b>${messageHtmlArr[1]}</b>`;
+    messageHtmlArr = messageHtmlArr.map(text => `<p>${text}</p>`);
+
+    axios.post("http://localhost:8002/send", {
+      from: "VotingPay <admin@votingpay.com>",
+      to: email,
+      subject: "Восстановление пароля",
+      text: messageTextArr.join(" \n"),
+      html: messageHtmlArr.join("")
+    });
 
     return {
       errorStatus,
       errorText,
       restorePasswordSessionId
     };
+  }
+  createApiPoint_resorePasswordVerificationCode(app: express.Application) {
+    app.post("/restore-password-verification-code", async (req, res) => {
+      res.send(await this.resorePasswordVerificationCode(req.body));
+    });
+  }
+  async resorePasswordVerificationCode({
+    code,
+    sessionId,
+    newPassword
+  }: VerificationCodeReqData): Promise<VerificationCodeResData> {
+    if (!code || !sessionId) {
+      return {
+        errorStatus: true,
+        errorText: "(code || sessionId) not found"
+      };
+    }
+
+    if (!this.db) {
+      return {
+        errorStatus: true,
+        errorText: "Ошибка соединения с базой данных!"
+      };
+    }
+
+    let users = this.db.collection("vpUsers");
+
+    if (!users) {
+      return {
+        errorStatus: true,
+        errorText: "Ошибка соединения с базой данных!"
+      };
+    }
+
+    let restorePasswordSessionId = sessionId;
+    let data = await users.find({ restorePasswordSessionId }).toArray();
+
+    if (!data[0]) {
+      return {
+        errorStatus: true,
+        errorText: "Сессия не найдена или устарела."
+      };
+    }
+
+    if (data[0].restorePasswordNumberAttempts > 5) {
+      return {
+        errorStatus: true,
+        errorText: "Превышено максимальное число попыток (5)"
+      };
+    } else {
+      let { restorePasswordNumberAttempts } = data[0];
+      restorePasswordNumberAttempts++;
+      users.updateOne(
+        { restorePasswordSessionId },
+        {
+          $set: {
+            restorePasswordNumberAttempts
+          }
+        }
+      );
+    }
+
+    if (data[0].restorePasswordVerificationCode !== code) {
+      return {
+        errorStatus: true,
+        errorText: "Не правильный код подтверждения!"
+      };
+    }
+
+    if (!newPassword) {
+      return {
+        errorStatus: false,
+        errorText: ""
+      };
+    }
+
+    let AccessToken = this.createRandomHash();
+
+    users.updateOne(
+      { restorePasswordSessionId },
+      {
+        $set: {
+          newPassword,
+          AccessToken
+        }
+      }
+    );
+
+    return {
+      errorStatus: false,
+      errorText: "",
+      AccessToken
+    };
+  }
+
+  createRandomHash() {
+    return md5("prefix_" + Math.random() + "_postfix");
   }
 }
 

@@ -44,6 +44,7 @@ exports.__esModule = true;
 var express_1 = __importDefault(require("express"));
 var mongodb_1 = __importDefault(require("mongodb"));
 var md5_1 = __importDefault(require("md5"));
+var axios_1 = __importDefault(require("axios"));
 var MongoClient = mongodb_1["default"].MongoClient;
 var App = /** @class */ (function () {
     function App() {
@@ -68,6 +69,8 @@ var App = /** @class */ (function () {
         this.createApiPoint_registrationUser(app);
         this.createApiPoint_checkAccessToken(app);
         this.createApiPoint_loginUser(app);
+        this.createApiPoint_resorePassword(app);
+        this.createApiPoint_resorePasswordVerificationCode(app);
     }
     App.prototype.createApiPoint_registrationUser = function (app) {
         var _this = this;
@@ -164,7 +167,7 @@ var App = /** @class */ (function () {
         if (typeof this.db === "undefined") {
             return;
         }
-        var AccessToken = md5_1["default"]("prefix_" + Math.random() + "_postfix");
+        var AccessToken = this.createRandomHash();
         var users = this.db.collection("vpUsers");
         var user = {
             email: email,
@@ -329,11 +332,13 @@ var App = /** @class */ (function () {
     App.prototype.restorePassword = function (_a) {
         var email = _a.email;
         return __awaiter(this, void 0, void 0, function () {
-            var errorStatus, errorText, restorePasswordSessionId, users;
+            var errorStatus, errorText, restorePasswordSessionId, restorePasswordVerificationCode, restorePasswordNumberAttempts, users, messageTextArr, messageHtmlArr;
             return __generator(this, function (_b) {
                 errorStatus = false;
                 errorText = "";
-                restorePasswordSessionId = md5_1["default"](String(Math.random()).slice(2, 18));
+                restorePasswordSessionId = this.createRandomHash();
+                restorePasswordVerificationCode = this.createRandomHash().substr(0, 5);
+                restorePasswordNumberAttempts = 0;
                 if (!this.db) {
                     return [2 /*return*/, {
                             errorStatus: true,
@@ -344,8 +349,26 @@ var App = /** @class */ (function () {
                 users = this.db.collection("vpUsers");
                 users.updateOne({ email: email }, {
                     $set: {
-                        restorePasswordSessionId: restorePasswordSessionId
+                        restorePasswordSessionId: restorePasswordSessionId,
+                        restorePasswordVerificationCode: restorePasswordVerificationCode,
+                        restorePasswordNumberAttempts: restorePasswordNumberAttempts
                     }
+                });
+                messageTextArr = [
+                    "Вы получили это письмо, потому что вы (или кто-то еще) запросили код подтверждения учетной записи votingpay.com",
+                    "\u0412\u0430\u0448 \u043A\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F : " + restorePasswordVerificationCode,
+                    "Если вы получили это по ошибке, вы можете спокойно проигнорировать это.",
+                    "VotingPay любит тебя!"
+                ];
+                messageHtmlArr = messageTextArr.map(function (text) { return text; });
+                messageHtmlArr[1] = "<b>" + messageHtmlArr[1] + "</b>";
+                messageHtmlArr = messageHtmlArr.map(function (text) { return "<p>" + text + "</p>"; });
+                axios_1["default"].post("http://localhost:8002/send", {
+                    from: "VotingPay <admin@votingpay.com>",
+                    to: email,
+                    subject: "Восстановление пароля",
+                    text: messageTextArr.join(" \n"),
+                    html: messageHtmlArr.join("")
                 });
                 return [2 /*return*/, {
                         errorStatus: errorStatus,
@@ -354,6 +377,104 @@ var App = /** @class */ (function () {
                     }];
             });
         });
+    };
+    App.prototype.createApiPoint_resorePasswordVerificationCode = function (app) {
+        var _this = this;
+        app.post("/restore-password-verification-code", function (req, res) { return __awaiter(_this, void 0, void 0, function () {
+            var _a, _b;
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        _b = (_a = res).send;
+                        return [4 /*yield*/, this.resorePasswordVerificationCode(req.body)];
+                    case 1:
+                        _b.apply(_a, [_c.sent()]);
+                        return [2 /*return*/];
+                }
+            });
+        }); });
+    };
+    App.prototype.resorePasswordVerificationCode = function (_a) {
+        var code = _a.code, sessionId = _a.sessionId, newPassword = _a.newPassword;
+        return __awaiter(this, void 0, void 0, function () {
+            var users, restorePasswordSessionId, data, restorePasswordNumberAttempts, AccessToken;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        if (!code || !sessionId) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "(code || sessionId) not found"
+                                }];
+                        }
+                        if (!this.db) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Ошибка соединения с базой данных!"
+                                }];
+                        }
+                        users = this.db.collection("vpUsers");
+                        if (!users) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Ошибка соединения с базой данных!"
+                                }];
+                        }
+                        restorePasswordSessionId = sessionId;
+                        return [4 /*yield*/, users.find({ restorePasswordSessionId: restorePasswordSessionId }).toArray()];
+                    case 1:
+                        data = _b.sent();
+                        if (!data[0]) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Сессия не найдена или устарела."
+                                }];
+                        }
+                        if (data[0].restorePasswordNumberAttempts > 5) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Превышено максимальное число попыток (5)"
+                                }];
+                        }
+                        else {
+                            restorePasswordNumberAttempts = data[0].restorePasswordNumberAttempts;
+                            restorePasswordNumberAttempts++;
+                            users.updateOne({ restorePasswordSessionId: restorePasswordSessionId }, {
+                                $set: {
+                                    restorePasswordNumberAttempts: restorePasswordNumberAttempts
+                                }
+                            });
+                        }
+                        if (data[0].restorePasswordVerificationCode !== code) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Не правильный код подтверждения!"
+                                }];
+                        }
+                        if (!newPassword) {
+                            return [2 /*return*/, {
+                                    errorStatus: false,
+                                    errorText: ""
+                                }];
+                        }
+                        AccessToken = this.createRandomHash();
+                        users.updateOne({ restorePasswordSessionId: restorePasswordSessionId }, {
+                            $set: {
+                                newPassword: newPassword,
+                                AccessToken: AccessToken
+                            }
+                        });
+                        return [2 /*return*/, {
+                                errorStatus: false,
+                                errorText: "",
+                                AccessToken: AccessToken
+                            }];
+                }
+            });
+        });
+    };
+    App.prototype.createRandomHash = function () {
+        return md5_1["default"]("prefix_" + Math.random() + "_postfix");
     };
     return App;
 }());
