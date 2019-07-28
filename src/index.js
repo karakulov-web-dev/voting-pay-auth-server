@@ -332,49 +332,65 @@ var App = /** @class */ (function () {
     App.prototype.restorePassword = function (_a) {
         var email = _a.email;
         return __awaiter(this, void 0, void 0, function () {
-            var errorStatus, errorText, restorePasswordSessionId, restorePasswordVerificationCode, restorePasswordNumberAttempts, users, messageTextArr, messageHtmlArr;
+            var errorStatus, errorText, restorePasswordSessionId, restorePasswordVerificationCode, restorePasswordNumberAttempts, users, messageTextArr, messageHtmlArr, e_1;
             return __generator(this, function (_b) {
-                errorStatus = false;
-                errorText = "";
-                restorePasswordSessionId = this.createRandomHash();
-                restorePasswordVerificationCode = this.createRandomHash().substr(0, 5);
-                restorePasswordNumberAttempts = 0;
-                if (!this.db) {
-                    return [2 /*return*/, {
-                            errorStatus: true,
-                            errorText: "Ошибка соединения с базой данных!",
-                            restorePasswordSessionId: ""
+                switch (_b.label) {
+                    case 0:
+                        errorStatus = false;
+                        errorText = "";
+                        restorePasswordSessionId = this.createRandomHash();
+                        restorePasswordVerificationCode = this.createRandomHash().substr(0, 5);
+                        restorePasswordNumberAttempts = 0;
+                        if (!this.db) {
+                            return [2 /*return*/, {
+                                    errorStatus: true,
+                                    errorText: "Ошибка соединения с базой данных!",
+                                    restorePasswordSessionId: ""
+                                }];
+                        }
+                        users = this.db.collection("vpUsers");
+                        users.updateOne({ email: email }, {
+                            $set: {
+                                restorePasswordSessionId: restorePasswordSessionId,
+                                restorePasswordVerificationCode: restorePasswordVerificationCode,
+                                restorePasswordNumberAttempts: restorePasswordNumberAttempts
+                            }
+                        });
+                        messageTextArr = [
+                            "Вы получили это письмо, потому что вы (или кто-то еще) запросили код подтверждения учетной записи votingpay.com",
+                            "\u0412\u0430\u0448 \u043A\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F : " + restorePasswordVerificationCode,
+                            "Если вы получили это по ошибке, вы можете спокойно проигнорировать это.",
+                            "VotingPay любит тебя!"
+                        ];
+                        messageHtmlArr = messageTextArr.map(function (text) { return text; });
+                        messageHtmlArr[1] = "<b>" + messageHtmlArr[1] + "</b>";
+                        messageHtmlArr = messageHtmlArr.map(function (text) { return "<p>" + text + "</p>"; });
+                        _b.label = 1;
+                    case 1:
+                        _b.trys.push([1, 3, , 4]);
+                        return [4 /*yield*/, axios_1["default"].post("http://localhost:8002/send", {
+                                from: "VotingPay <admin@votingpay.com>",
+                                to: email,
+                                subject: "Восстановление пароля",
+                                text: messageTextArr.join(" \n"),
+                                html: messageHtmlArr.join("")
+                            })];
+                    case 2:
+                        _b.sent();
+                        return [3 /*break*/, 4];
+                    case 3:
+                        e_1 = _b.sent();
+                        return [2 /*return*/, {
+                                errorStatus: true,
+                                errorText: "Внутренняя ошибка сервера: " + String(e_1),
+                                restorePasswordSessionId: ""
+                            }];
+                    case 4: return [2 /*return*/, {
+                            errorStatus: errorStatus,
+                            errorText: errorText,
+                            restorePasswordSessionId: restorePasswordSessionId
                         }];
                 }
-                users = this.db.collection("vpUsers");
-                users.updateOne({ email: email }, {
-                    $set: {
-                        restorePasswordSessionId: restorePasswordSessionId,
-                        restorePasswordVerificationCode: restorePasswordVerificationCode,
-                        restorePasswordNumberAttempts: restorePasswordNumberAttempts
-                    }
-                });
-                messageTextArr = [
-                    "Вы получили это письмо, потому что вы (или кто-то еще) запросили код подтверждения учетной записи votingpay.com",
-                    "\u0412\u0430\u0448 \u043A\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F : " + restorePasswordVerificationCode,
-                    "Если вы получили это по ошибке, вы можете спокойно проигнорировать это.",
-                    "VotingPay любит тебя!"
-                ];
-                messageHtmlArr = messageTextArr.map(function (text) { return text; });
-                messageHtmlArr[1] = "<b>" + messageHtmlArr[1] + "</b>";
-                messageHtmlArr = messageHtmlArr.map(function (text) { return "<p>" + text + "</p>"; });
-                axios_1["default"].post("http://localhost:8002/send", {
-                    from: "VotingPay <admin@votingpay.com>",
-                    to: email,
-                    subject: "Восстановление пароля",
-                    text: messageTextArr.join(" \n"),
-                    html: messageHtmlArr.join("")
-                });
-                return [2 /*return*/, {
-                        errorStatus: errorStatus,
-                        errorText: errorText,
-                        restorePasswordSessionId: restorePasswordSessionId
-                    }];
             });
         });
     };
@@ -460,8 +476,10 @@ var App = /** @class */ (function () {
                         AccessToken = this.createRandomHash();
                         users.updateOne({ restorePasswordSessionId: restorePasswordSessionId }, {
                             $set: {
-                                newPassword: newPassword,
-                                AccessToken: AccessToken
+                                password: newPassword,
+                                AccessToken: AccessToken,
+                                restorePasswordSessionId: "",
+                                restorePasswordVerificationCode: ""
                             }
                         });
                         return [2 /*return*/, {

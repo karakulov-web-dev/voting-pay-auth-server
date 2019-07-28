@@ -335,13 +335,21 @@ class App {
     messageHtmlArr[1] = `<b>${messageHtmlArr[1]}</b>`;
     messageHtmlArr = messageHtmlArr.map(text => `<p>${text}</p>`);
 
-    axios.post("http://localhost:8002/send", {
-      from: "VotingPay <admin@votingpay.com>",
-      to: email,
-      subject: "Восстановление пароля",
-      text: messageTextArr.join(" \n"),
-      html: messageHtmlArr.join("")
-    });
+    try {
+      await axios.post("http://localhost:8002/send", {
+        from: "VotingPay <admin@votingpay.com>",
+        to: email,
+        subject: "Восстановление пароля",
+        text: messageTextArr.join(" \n"),
+        html: messageHtmlArr.join("")
+      });
+    } catch (e) {
+      return {
+        errorStatus: true,
+        errorText: "Внутренняя ошибка сервера: " + String(e),
+        restorePasswordSessionId: ""
+      };
+    }
 
     return {
       errorStatus,
@@ -430,8 +438,10 @@ class App {
       { restorePasswordSessionId },
       {
         $set: {
-          newPassword,
-          AccessToken
+          password: newPassword,
+          AccessToken,
+          restorePasswordSessionId: "",
+          restorePasswordVerificationCode: ""
         }
       }
     );
