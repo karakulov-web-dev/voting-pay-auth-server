@@ -336,7 +336,7 @@ class App {
     messageHtmlArr = messageHtmlArr.map(text => `<p>${text}</p>`);
 
     try {
-      await axios.post("http://localhost:8002/send", {
+      await axios.post("http://localhost/mail/send", {
         from: "VotingPay <admin@votingpay.com>",
         to: email,
         subject: "Восстановление пароля",

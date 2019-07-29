@@ -368,7 +368,7 @@ var App = /** @class */ (function () {
                         _b.label = 1;
                     case 1:
                         _b.trys.push([1, 3, , 4]);
-                        return [4 /*yield*/, axios_1["default"].post("http://localhost:8002/send", {
+                        return [4 /*yield*/, axios_1["default"].post("http://localhost/mail/send", {
                                 from: "VotingPay <admin@votingpay.com>",
                                 to: email,
                                 subject: "Восстановление пароля",
